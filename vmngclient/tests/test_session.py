@@ -3,6 +3,7 @@ from typing import Optional
 from unittest.mock import patch
 
 from parameterized import parameterized  # type: ignore
+from requests.exceptions import ConnectionError
 
 from vmngclient.session import vManageSession
 
@@ -55,9 +56,11 @@ class TestSession(unittest.TestCase):
         # Assert
         self.assertEqual(eval(mock_repr()), session)
 
+    @patch("vmngclient.session.vManageSession.check_vmanage_server_connection")
     @patch("vmngclient.session.Session.__repr__")
-    def test_session_eval_repr_different_sessions(self, mock_repr):
+    def test_session_eval_repr_different_sessions(self, mock_repr, mock_check_connection):
         # Arrange, Act
+        mock_check_connection.return_value = True
         mock_repr.return_value = "vManageSession('domain.com', 'user1', '$password', port=111, subdomain='None')"
         session = vManageSession("not.domain.com", "different_user", "$password", port=111)
         # Assert
@@ -70,8 +73,10 @@ class TestSession(unittest.TestCase):
         # Assert
         self.assertEqual(session_1, session_2)
 
-    def test_session_eq_different_sessions(self):
+    @patch("vmngclient.session.vManageSession.check_vmanage_server_connection")
+    def test_session_eq_different_sessions(self, mock_check_connection):
         # Arrange, Act
+        mock_check_connection.return_value = True
         session_1 = vManageSession("domain.com", "user1", "$password", port=111)
         session_2 = vManageSession("not.domain.com", "different_user", "$password", port=111)
         # Assert
@@ -91,6 +96,31 @@ class TestSession(unittest.TestCase):
 
         # Assert
         self.assertEqual(session.get_full_url(url), full_url)
+
+    @patch("vmngclient.session.head")
+    def test_check_vmanage_server_with_port(self, mock_requests):
+        # Arrange, Act
+        mock_requests.return_value = None
+        session = vManageSession("domain.com", "user1", "$password", port=111)
+        answer = session.check_vmanage_server_connection()
+        # Assert
+        self.assertEqual(answer, True)
+
+    @patch("vmngclient.session.head")
+    def test_check_vmanage_server_no_port(self, mock_requests):
+        # Arrange, Act
+        mock_requests.return_value = None
+        session = vManageSession("domain.com", "user1", "$password")
+        answer = session.check_vmanage_server_connection()
+        # Assert
+        self.assertEqual(answer, True)
+
+    @patch("vmngclient.session.head")
+    def test_check_vmanage_server_connection_error(self, mock_requests):
+        # Arrange
+        mock_requests.side_effect = ConnectionError()
+        # Assert
+        self.assertRaises(ConnectionError, vManageSession, "domain.com", "user1", "$password")
 
 
 if __name__ == "__main__":

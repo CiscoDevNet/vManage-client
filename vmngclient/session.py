@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin
 
-from requests import Response, Session
+from requests import Response, Session, head
 from requests.auth import AuthBase
-from requests.exceptions import HTTPError
+from requests.exceptions import ConnectionError, HTTPError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed  # type: ignore
 
 from vmngclient.utils.response import response_debug
@@ -66,8 +66,10 @@ def create_vManageSession(
         Session object
 
     """
+
     session = vManageSession(url=url, username=username, password=password, port=port, subdomain=subdomain)
     session.auth = vManageAuth(session.base_url, username, password, verify=False)
+
     if subdomain:
         tenant_id = session.get_tenant_id()
         vsession_id = session.get_virtual_session_id(tenant_id)
@@ -138,6 +140,9 @@ class vManageSession(Session):
         self.subdomain = subdomain
 
         self.session_type = SessionType.NOT_DEFINED
+
+        if not self.check_vmanage_server_connection():
+            raise ConnectionError("Vmanage server is not available")
 
         super(vManageSession, self).__init__()
         self.__prepare_session(verify, auth)
@@ -263,6 +268,17 @@ class vManageSession(Session):
     def __prepare_session(self, verify: bool, auth: Optional[AuthBase]) -> None:
         self.auth = auth
         self.verify = verify
+
+    def check_vmanage_server_connection(self) -> bool:
+        try:
+            url = str(self.base_url).replace("https", "http")
+            if self.port:
+                url = url.replace(str(f":{self.port}"), "")
+            head(url, timeout=2)
+        except ConnectionError:
+            return False
+        else:
+            return True
 
     def __str__(self) -> str:
         return f"{self.username}@{self.base_url}"
